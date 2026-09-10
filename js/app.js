@@ -366,6 +366,9 @@
   function renderSceneBar() {
     const bar = $('sceneBar');
     bar.hidden = !state.showSceneBar;
+    // Tells the layout whether to leave room along the top, so hiding the switcher
+    // closes the gap instead of leaving the readouts pushed down.
+    document.body.classList.toggle('has-scene-bar', !!state.showSceneBar);
     if (!state.showSceneBar) return;
 
     for (const b of bar.querySelectorAll('.scene-pill')) {
@@ -402,97 +405,120 @@
   /* ------------------------------------------------------------ narration --- */
 
   /*
-   * One audio element, reused. A single element cannot overlap itself, which is the
-   * behaviour we want: a scene's clips are a sequence, and leaving a scene should
-   * cut its voice off rather than let it talk over the next one.
+   * A fresh Audio element per clip, played only once it is ready.
    *
-   * Browsers refuse to play audible sound until the page has had a genuine user
-   * gesture, so play() can be rejected. In practice a visitor reaches these scenes
-   * by tapping, which counts — but landing straight on ?scene=1 does not, so a
-   * rejection arms a one-shot listener and starts the moment they touch anything.
+   * This used to reuse one element, which caused both of the faults it was meant
+   * to avoid. Assigning a new `src` to an element that is still playing runs the
+   * media load algorithm, which aborts the previous load and fires an `error` for
+   * it — asynchronously, so the *new* clip's error handler received the *old*
+   * clip's failure and skipped straight past it. That is why later scenes fell
+   * silent: the element had been used, so every clip after the first was liable to
+   * be thrown away before it played.
+   *
+   * Calling play() immediately after setting src caused the other fault. Playback
+   * begins as soon as a little data has arrived, which can clip the opening word.
+   * Waiting for `canplay` and explicitly seeking to zero fixes that.
+   *
+   * A separate element per clip also means an aborted or failed clip cannot reach
+   * into the one that replaced it: its handlers belong to an object nobody is
+   * listening to any more.
    */
-  let narrator = null;
-  let narrationQueue = [];
-  let narrationToken = 0;      // invalidates callbacks from a scene we have left
+  let narrator = null;            // the element currently playing, for stopNarration
+  let narrationToken = 0;         // invalidates a scene we have already left
   let narrationArmed = false;
-  let narrationWatchdog = null;
 
-  // If a clip's own duration is unknown, assume no line runs longer than this.
+  // Upper bound when a clip never reports its own duration.
   const NARRATION_MAX_CLIP_MS = 20000;
-  const NARRATION_SLACK_MS = 1200;
-
-  function ensureNarrator() {
-    if (narrator) return narrator;
-    narrator = new Audio();
-    narrator.preload = 'auto';
-    return narrator;
-  }
+  // Grace beyond a clip's real duration before the watchdog steps in.
+  const NARRATION_SLACK_MS = 2500;
+  // If neither `canplay` nor `error` arrives, try playing anyway rather than wait.
+  const NARRATION_READY_GRACE_MS = 2500;
 
   function stopNarration() {
     narrationToken++;
-    narrationQueue = [];
-    clearTimeout(narrationWatchdog);
-    narrationWatchdog = null;
     if (narrator) {
-      narrator.pause();
+      try { narrator.pause(); } catch { /* already gone */ }
       narrator.onended = null;
       narrator.onerror = null;
+      narrator.oncanplay = null;
       narrator.onloadedmetadata = null;
-      try { narrator.currentTime = 0; } catch { /* not seekable yet */ }
+      narrator.src = '';          // release the decoder
+      narrator = null;
     }
   }
 
   /**
-   * Play a list of clip filenames in order, then call `onDone`.
+   * Play one clip through. Resolves with why it finished — 'ended', 'error',
+   * 'blocked' (autoplay refused) or 'timeout' — rather than throwing, so the
+   * sequence can decide what to do about each.
+   */
+  function playClip(clip, token) {
+    return new Promise((resolve) => {
+      const audio = new Audio();
+      audio.preload = 'auto';
+      narrator = audio;
+
+      let settled = false;
+      let watchdog = null;
+      const done = (why) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(watchdog);
+        audio.onended = audio.onerror = audio.oncanplay = audio.onloadedmetadata = null;
+        resolve(why);
+      };
+      const arm = (ms) => { clearTimeout(watchdog); watchdog = setTimeout(() => done('timeout'), ms); };
+
+      const start = () => {
+        if (settled || token !== narrationToken) return;
+        // Explicitly from the top: a fresh element should already be at zero, but
+        // saying so costs nothing and guarantees the first word is there.
+        try { audio.currentTime = 0; } catch { /* not seekable yet, fine */ }
+        audio.play().catch(() => done('blocked'));
+      };
+
+      audio.onended = () => done('ended');
+      audio.onerror = () => done('error');
+      audio.oncanplay = start;
+      audio.onloadedmetadata = () => {
+        if (Number.isFinite(audio.duration) && audio.duration > 0) {
+          arm(audio.duration * 1000 + NARRATION_SLACK_MS);
+        }
+      };
+
+      arm(NARRATION_MAX_CLIP_MS);
+      // encodeURI, because one of the filenames contains a space.
+      audio.src = SOUND_DIR + encodeURI(clip);
+      audio.load();
+      // Belt and braces: if readiness never reports, start it regardless.
+      setTimeout(() => { if (!settled && audio.paused) start(); }, NARRATION_READY_GRACE_MS);
+    });
+  }
+
+  /**
+   * Play a list of clips strictly in order, then call `onDone`.
    *
-   * `onDone` also fires when there is nothing to play — narration switched off, no
-   * clips, or the browser refusing to start. Anything that waits on the voice
-   * finishing has to happen anyway, or the visitor is stranded in front of a scene
-   * that will not move.
+   * Each clip waits for the one before it to finish, so a scene that says two
+   * things says them one after the other. `onDone` fires however the sequence
+   * ends — including with nothing to play — because whatever waits on the voice
+   * (the gate on scene 1, the mic on scene 2) has to happen either way or the
+   * visitor is stranded in front of a scene that will not move.
    */
   function playNarration(clips, onDone) {
     stopNarration();
     const finish = () => { if (typeof onDone === 'function') onDone(); };
     if (!state.narration || !clips || !clips.length) { finish(); return; }
 
-    narrationQueue = clips.slice();
     const token = narrationToken;
-    const audio = ensureNarrator();
-
-    const next = () => {
-      if (token !== narrationToken) return;      // scene changed under us
-      clearTimeout(narrationWatchdog);
-      const clip = narrationQueue.shift();
-      if (!clip) { finish(); return; }
-
-      // A watchdog per clip. Anything downstream of the voice — the gate on scene
-      // 1, most importantly — has to happen even if this clip never reports
-      // finishing: a missing file, a stalled network, a decode failure. Being
-      // stranded in front of a scene that will not advance is far worse than
-      // hearing the line cut a moment short.
-      const arm = (ms) => {
-        clearTimeout(narrationWatchdog);
-        narrationWatchdog = setTimeout(() => {
-          if (token === narrationToken) next();
-        }, ms);
-      };
-      arm(NARRATION_MAX_CLIP_MS);
-
-      // encodeURI, because one of the filenames contains a space.
-      audio.src = SOUND_DIR + encodeURI(clip);
-      audio.onloadedmetadata = () => {
+    (async () => {
+      for (const clip of clips) {
+        if (token !== narrationToken) return;    // scene changed under us
+        const why = await playClip(clip, token);
         if (token !== narrationToken) return;
-        if (Number.isFinite(audio.duration) && audio.duration > 0) {
-          arm(audio.duration * 1000 + NARRATION_SLACK_MS);
-        }
-      };
-      audio.onended = next;
-      // A clip that cannot load is skipped rather than being allowed to hold up
-      // everything behind it.
-      audio.onerror = () => { if (token === narrationToken) next(); };
-      audio.play().catch(() => { armNarrationOnGesture(clips); finish(); });
-    };
-    next();
+        if (why === 'blocked') { armNarrationOnGesture(clips); break; }
+      }
+      if (token === narrationToken) finish();
+    })();
   }
 
   /** Retry the scene's narration once the visitor gives us a gesture to work with. */
@@ -504,7 +530,10 @@
       window.removeEventListener('pointerdown', go);
       window.removeEventListener('keydown', go);
       // Only resume if we are still on the scene that asked for these clips.
-      if (state.narration && narrationClipsFor(state.scene) === clips) playNarration(clips);
+      const current = narrationClipsFor(state.scene);
+      // Compare by contents: narrationClipsFor() returns a fresh array each call,
+      // so a reference check here never matched and the retry never happened.
+      if (state.narration && current.join('|') === clips.join('|')) playNarration(clips);
     };
     window.addEventListener('pointerdown', go, { once: true });
     window.addEventListener('keydown', go, { once: true });
@@ -530,6 +559,7 @@
     playNarration(clips, () => {
       if (state.scene !== scene) return;         // they moved on while it spoke
       if (scene === 1) revealZodiacGate();
+      if (scene === 2) autoListenForBirthdate();
     });
   }
 
@@ -564,6 +594,12 @@
     const el = $('zodiacGateHint');
     el.textContent = text || '';
     el.classList.toggle('live', !!live);
+    // The pill carries the state; the line underneath carries anything extra
+    // worth saying, like a blocked microphone or what was heard.
+    const mic = $('zodiacGateMic');
+    mic.hidden = !live && !text;
+    mic.classList.toggle('listening', !!live);
+    $('zodiacGateMicLabel').textContent = live ? 'Listening…' : (text || 'Listening…');
   }
 
   function startGateListening() {
@@ -596,7 +632,7 @@
       gateRecognizer.onerror = (e) => {
         if (e.error === 'not-allowed' || e.error === 'service-not-allowed') {
           answered = true;   // reopening the mic will not change their mind
-          setGateHint('Microphone blocked — tap an answer instead', false);
+          setGateHint('Microphone blocked — choose an answer above', false);
         }
         // no-speech and network hiccups fall through to onend, which reopens.
       };
@@ -612,7 +648,7 @@
       catch { setGateHint('', false); }   // already started, or blocked outright
     };
 
-    setGateHint('Listening — say yes, or tap', true);
+    setGateHint('', true);   // the pill says "Listening…" on its own
     listenOnce();
   }
 
@@ -746,7 +782,22 @@
   function bdSetMicState(mode) { // 'idle' | 'listening'
     $('bdMicBtn').classList.toggle('listening', mode === 'listening');
     $('bdMicBtn').querySelector('.bd-mic-label').textContent =
-      mode === 'listening' ? 'Listening…' : 'Tap to speak';
+      mode === 'listening' ? 'Listening…' : 'Not listening';
+  }
+
+  /**
+   * Open the mic on scene 2 as soon as the birth-date question has finished being
+   * asked, so answering out loud needs no tap — the same shape as the gate on
+   * scene 1. The mic button stays as a retry, and typing stays available.
+   *
+   * Held back if they have already moved on, already answered, or chosen to type
+   * instead; in those cases opening the mic would be talking over their decision.
+   */
+  function autoListenForBirthdate() {
+    if (state.scene !== 2 || state.birthdateStep !== 'ask') return;
+    if ($('bdMicBtn').hidden) return;            // they switched to typing
+    if (!$('birthdateForm').hidden) return;      // the form is open and in use
+    startListening();
   }
 
   let bdRecognizer = null;
@@ -787,7 +838,7 @@
       bdRecognizer.onerror = (e) => {
         if (e.error === 'not-allowed' || e.error === 'service-not-allowed') {
           found = true; // permission denied — reopening the mic won't help
-          bdSetHeard('Microphone access was blocked — tap to try again, or type it instead.');
+          bdSetHeard('Microphone access was blocked — type it instead.');
           bdSetMicState('idle');
         }
         // Anything else (no-speech, network hiccups) is left to onend below,
@@ -1400,7 +1451,9 @@
 
     /* --- the birthdate ask (scene 2) --- */
     buildBirthdateGlyphs();
-    $('bdMicBtn').addEventListener('click', startListening);
+    // No click handler on the mic status: it is a read-out now, and the mic opens
+    // itself once the birth-date question has been asked.
+
     $('bdTypeInstead').addEventListener('click', () => {
       bdListenSession++;
       if (bdRecognizer) { bdRecognizer.abort(); bdRecognizer = null; }
@@ -1776,7 +1829,8 @@
                    acceptReady, isAffirmative, AFFIRMATIVES,
                    startGateListening, stopGateListening,
                    SHAPE_PICK_CLIPS, shapeNumberFor,
-                   get cameraStream() { return cameraStream; }, startCamera, stopCamera };
+                   get cameraStream() { return cameraStream; }, startCamera, stopCamera,
+                   autoListenForBirthdate };
 
   document.addEventListener('DOMContentLoaded', boot);
 })();

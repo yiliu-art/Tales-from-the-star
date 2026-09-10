@@ -11,6 +11,9 @@
   --line: rgba(120, 145, 185, 0.14);
   --glass: rgba(9, 13, 23, 0.62);
   --bad: #e0736b;
+  /* Height the switcher occupies along the top; everything that must clear it
+     reads this, so moving or resizing the bar shifts the rest with it. */
+  --scene-bar-h: 58px;
   --sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto,
           "Helvetica Neue", Arial, sans-serif;
   --serif: "EB Garamond", serif;
@@ -86,6 +89,7 @@ h1, h2, h3 { margin: 0; font-weight: 600; letter-spacing: -0.01em; }
 .hud > * { pointer-events: auto; }
 
 .hud-tl { top: 20px; left: 22px; max-width: 300px; }
+body.has-scene-bar .hud-tl { top: calc(var(--scene-bar-h) + 14px); }
 .hud-tl p { margin: 0; }
 .place {
   font-size: 11px; text-transform: uppercase; letter-spacing: 0.13em;
@@ -121,6 +125,7 @@ h1, h2, h3 { margin: 0; font-weight: 600; letter-spacing: -0.01em; }
 @media (prefers-reduced-motion: reduce) { .dot.on { animation: none; } }
 
 .hud-tr { top: 20px; right: 22px; text-align: right; }
+body.has-scene-bar .hud-tr { top: calc(var(--scene-bar-h) + 14px); }
 .facing {
   margin: 0 0 8px; font-size: 11px; text-transform: uppercase;
   letter-spacing: 0.13em; color: var(--ink-3); font-weight: 600;
@@ -235,6 +240,46 @@ input.bad { border-color: var(--bad); background: rgba(224, 115, 107, 0.14); }
   color: #fff;
 }
 
+/* --------------------------------------------------------- hand control --- */
+
+.gesture-btn {
+  margin-left: 8px;
+  border-color: rgba(150, 190, 230, 0.34);
+  background: var(--glass);
+  color: var(--ink-2);
+}
+.gesture-btn:hover { border-color: rgba(150, 190, 230, 0.55); color: var(--ink); }
+.gesture-btn.on {
+  background: rgba(120, 175, 225, 0.32);
+  border-color: rgba(150, 190, 230, 0.6);
+  color: #fff;
+}
+
+.gesture-panel {
+  position: absolute; z-index: 4;
+  right: 22px; bottom: 20px; width: 200px;
+  padding: 8px;
+  border: 1px solid var(--line);
+  background: var(--glass);
+  border-radius: 10px;
+  backdrop-filter: blur(7px);
+  text-align: center;
+}
+.gesture-preview {
+  position: relative; width: 100%; height: 150px;
+  border-radius: 6px; overflow: hidden; background: #04060c;
+}
+.gesture-preview video, .gesture-preview canvas {
+  position: absolute; inset: 0; width: 100%; height: 100%;
+  transform: scaleX(-1);
+}
+.gesture-status {
+  margin: 7px 0 0; font-size: 11.5px; color: var(--ink-2);
+}
+.gesture-hint {
+  margin: 4px 0 0; font-size: 10px; color: var(--ink-3); font-style: italic; line-height: 1.4;
+}
+
 .panel-head h1 { font-size: 17px; letter-spacing: -0.02em; padding-right: 34px; }
 .panel-head p { margin: 6px 0 0; color: var(--ink-3); font-size: 12px; line-height: 1.55; }
 
@@ -310,10 +355,12 @@ input.bad { border-color: var(--bad); background: rgba(224, 115, 107, 0.14); }
    what a visitor is meant to look at. */
 .scene-bar {
   position: absolute; z-index: 5;
-  left: 0; right: 0; bottom: 0;
-  padding: 26px 18px 14px;
+  left: 0; right: 0; top: 0;
+  padding: 13px 18px 17px;
   display: flex; flex-direction: column; align-items: center; gap: 8px;
-  background: linear-gradient(180deg, transparent, rgba(3, 5, 10, 0.78) 62%);
+  /* Flipped now the bar is at the top: dark behind the buttons, fading down into
+     the sky rather than up out of it. */
+  background: linear-gradient(180deg, rgba(3, 5, 10, 0.78) 38%, transparent);
   pointer-events: none;
 }
 .scene-bar[hidden] { display: none !important; }
@@ -346,7 +393,8 @@ input.bad { border-color: var(--bad); background: rgba(224, 115, 107, 0.14); }
 .scene-pill.active b { background: rgba(227, 199, 127, 0.28); color: #fbeec9; }
 
 @media (max-width: 640px) {
-  .scene-bar { padding: 18px 10px 10px; gap: 6px; }
+  :root { --scene-bar-h: 46px; }
+  .scene-bar { padding: 9px 10px 13px; gap: 6px; }
   .scene-pill { padding: 4px 9px 4px 6px; font-size: 10px; }
 }
 
@@ -390,8 +438,10 @@ input.bad { border-color: var(--bad); background: rgba(224, 115, 107, 0.14); }
   font: 700 clamp(22px, 2.2vw, 30px) "Libre Bodoni", serif;
   color: #fff; text-shadow: 0 1px 14px rgba(0, 0, 0, 0.7);
 }
+.zodiac-gate-mic { margin-top: 22px; }
+
 .zodiac-gate-hint {
-  margin: 16px 0 0; min-height: 1.2em;
+  margin: 12px 0 0; min-height: 1.2em;
   font: 400 13.5px "EB Garamond", serif; font-style: italic;
   color: rgba(255, 255, 255, 0.5);
   text-shadow: 0 1px 10px rgba(0, 0, 0, 0.7);
@@ -496,8 +546,10 @@ input.bad { border-color: var(--bad); background: rgba(224, 115, 107, 0.14); }
   font: 700 clamp(22px, 2.2vw, 30px) "Libre Bodoni", serif;
   color: #fff; text-shadow: 0 1px 14px rgba(0, 0, 0, 0.7);
 }
+.zodiac-gate-mic { margin-top: 22px; }
+
 .zodiac-gate-hint {
-  margin: 16px 0 0; min-height: 1.2em;
+  margin: 12px 0 0; min-height: 1.2em;
   font: 400 13.5px "EB Garamond", serif; font-style: italic;
   color: rgba(255, 255, 255, 0.5);
   text-shadow: 0 1px 10px rgba(0, 0, 0, 0.7);
@@ -551,9 +603,8 @@ input.bad { border-color: var(--bad); background: rgba(224, 115, 107, 0.14); }
   padding: 12px 22px; border-radius: 999px;
   border: 1px solid var(--line); background: rgba(255, 255, 255, 0.06);
   color: var(--ink); font: 500 14px "EB Garamond", serif;
-  cursor: pointer; transition: background 0.3s ease, border-color 0.3s ease;
+  transition: background 0.3s ease, border-color 0.3s ease;
 }
-.bd-mic:hover { background: rgba(255, 255, 255, 0.12); border-color: rgba(150, 180, 220, 0.4); }
 .bd-mic[hidden] { display: none !important; }
 .bd-mic-dot {
   width: 9px; height: 9px; border-radius: 50%; background: #6f7d94; flex: 0 0 auto;
@@ -941,12 +992,14 @@ input.bad { border-color: var(--bad); background: rgba(224, 115, 107, 0.14); }
   /* Narrow screens cannot fit the place block and the compass side by side, so
      give the compass its own row across the top and drop the clock below it. */
   .hud-tr { top: 12px; right: 12px; left: 12px; }
+  body.has-scene-bar .hud-tr { top: calc(var(--scene-bar-h) + 8px); }
   .facing { margin-bottom: 6px; font-size: 9.5px; letter-spacing: 0.09em; }
   .cbtn, .ctrl { width: 27px; height: 26px; font-size: 10.5px; }
   .ctrl { font-size: 14px; }
   .hint { display: none; }
 
   .hud-tl { top: 62px; left: 14px; max-width: calc(100% - 28px); }
+  body.has-scene-bar .hud-tl { top: calc(var(--scene-bar-h) + 50px); }
   .place { letter-spacing: 0.09em; }
   .clock { font-size: 25px; }
   .phrase { font-size: 12px; max-width: 250px; }
