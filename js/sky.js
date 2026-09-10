@@ -34,6 +34,11 @@ const Sky = (() => {
 
   const rgb = (c, a) => `rgba(${c[0]},${c[1]},${c[2]},${a})`;
 
+  // The camera-recognition glow: a warm orange, independent of the zodiac/
+  // circumpolar palette above, so a detected object always reads the same way
+  // regardless of which of the seventeen it lands on.
+  const DETECT_GLOW = [255, 150, 60];
+
   /* ---------------------------------------------------------- view frame --- */
 
   /** Horizon-frame unit vector. x -> north, y -> east, z -> up. */
@@ -672,6 +677,9 @@ const Sky = (() => {
 
     const hit = { constellations: [], stars: [], view };
     const groupShown = (g) => (g === 'circumpolar' ? state.showCircumpolar : state.showZodiac);
+    const now = anim ? anim.t : 0;
+    // A slow breathing pulse, not a blink — 0.55..1 so the glow never fully dims.
+    const detectPulse = 0.55 + 0.45 * (0.5 + 0.5 * Math.sin(now * 2.6));
 
     /* ---- constellation figures ---- */
     for (const con of data.constellations) {
@@ -679,6 +687,7 @@ const Sky = (() => {
       const selected = state.selected === con.abbrev;
       const hovered = state.hovered === con.abbrev;
       const muted = state.selected && !selected;
+      const detected = state.detected === con.abbrev;
       const segments = [];
 
       for (const [i, j] of con.lines) {
@@ -713,11 +722,32 @@ const Sky = (() => {
         ctx.stroke();
         ctx.restore();
       }
+
+      // Recognition glow: a separate additive pass in warm orange, layered over
+      // whatever the browsing state above already drew. Deliberately independent
+      // of `selected`/`muted` — being recognized by the camera should read the
+      // same whether or not someone is also mid-browse of a different figure.
+      if (detected) {
+        ctx.save();
+        ctx.globalCompositeOperation = 'lighter';
+        ctx.strokeStyle = rgb(DETECT_GLOW, (0.55 + 0.4 * detectPulse) * starDim);
+        ctx.lineWidth = (2.2 + 1.3 * detectPulse) * scale;
+        ctx.lineCap = 'round';
+        ctx.shadowColor = rgb(DETECT_GLOW, 0.9);
+        ctx.shadowBlur = (16 + 12 * detectPulse) * scale;
+        ctx.beginPath();
+        for (const [x1, y1, x2, y2] of segments) {
+          ctx.moveTo(x1, y1);
+          ctx.lineTo(x2, y2);
+        }
+        ctx.stroke();
+        ctx.restore();
+      }
+
       hit.constellations.push({ abbrev: con.abbrev, con, segments, label: null });
     }
 
     /* ---- stars ---- */
-    const now = anim ? anim.t : 0;
     const glyphCandidates = [];
     // Glyphs may shrink when pulled back; stars only ever grow.
     const zoomSize = zoomSizeFactor(view.fovDeg);
@@ -759,6 +789,25 @@ const Sky = (() => {
       const muted = state.selected && (!owner || owner.abbrev !== state.selected);
       drawStar(ctx, p, s.m, starScale,
         starDim * edgeFade * limitFade * (muted ? 0.4 : 1), tw);
+
+      // A soft orange bloom over every figure star of the recognized
+      // constellation — the same breathing pulse as its lines, additive so it
+      // reads as light rather than a repaint of the star itself. Sized from
+      // `starScale` (not the plain zoom-independent `scale`) so the glow stays
+      // proportionate to the star it's wrapped around at any zoom level.
+      if (owner && owner.abbrev === state.detected) {
+        const r = starRadius(s.m, starScale) * (2.4 + 1.4 * detectPulse);
+        ctx.save();
+        ctx.globalCompositeOperation = 'lighter';
+        const halo = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, r);
+        halo.addColorStop(0, rgb(DETECT_GLOW, 0.55 * starDim * edgeFade));
+        halo.addColorStop(1, rgb(DETECT_GLOW, 0));
+        ctx.fillStyle = halo;
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, r, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+      }
 
       // Glyphs mark the zodiac only. The five circumpolar figures keep their lines,
       // names and stories, but their stars are drawn plain — which reserves the
@@ -826,20 +875,27 @@ const Sky = (() => {
         const selected = state.selected === entry.abbrev;
         const hovered = state.hovered === entry.abbrev;
         const muted = state.selected && !selected;
+        const detected = state.detected === entry.abbrev;
         ctx.save();
-        ctx.font = `${selected ? 600 : 500} ${(selected ? 13.5 : 12) * scale}px "Libre Bodoni", serif`;
+        ctx.font = `${selected || detected ? 600 : 500} ${(selected || detected ? 13.5 : 12) * scale}px "Libre Bodoni", serif`;
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
         const tw = ctx.measureText(entry.con.name).width;
-        ctx.globalAlpha = (selected ? 1 : hovered ? 0.95 : muted ? 0.28 : 0.72) * Math.max(0.35, starDim);
-        if (selected || hovered) {
+        ctx.globalAlpha = (detected ? 1 : selected ? 1 : hovered ? 0.95 : muted ? 0.28 : 0.72) * Math.max(0.35, starDim);
+        if (selected || hovered || detected) {
           ctx.fillStyle = 'rgba(6,9,17,0.66)';
           ctx.beginPath();
           ctx.roundRect(p.x - tw / 2 - 6 * scale, p.y - 9 * scale,
             tw + 12 * scale, 18 * scale, 4 * scale);
           ctx.fill();
         }
-        ctx.fillStyle = entry.con.group === 'circumpolar' ? '#a8bad2' : '#e8d093';
+        if (detected) {
+          ctx.shadowColor = rgb(DETECT_GLOW, 0.85);
+          ctx.shadowBlur = (10 + 6 * detectPulse) * scale;
+          ctx.fillStyle = rgb(DETECT_GLOW, 0.95);
+        } else {
+          ctx.fillStyle = entry.con.group === 'circumpolar' ? '#a8bad2' : '#e8d093';
+        }
         ctx.fillText(entry.con.name, p.x, p.y);
         ctx.restore();
         entry.label = { x: p.x, y: p.y, w: tw + 16 * scale, h: 22 * scale };

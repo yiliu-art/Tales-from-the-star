@@ -175,6 +175,12 @@
     birthDate: null,
     detectedZodiac: null,
     narration: true,
+    // Set from outside (objectTrainer.js) when the camera recognizes a trained
+    // object — purely a glow cue, independent of `selected`, so it never forces
+    // a turn or opens the story panel the way clicking a constellation does.
+    // Distinct from `detectedZodiac` above, which the birthdate-driven scene
+    // sequence sets from a typed-in birth date, not the camera.
+    detected: null,
   };
 
   let data = null, frame = null, computed = null;

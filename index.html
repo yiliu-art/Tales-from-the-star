@@ -131,9 +131,14 @@
         <button class="ctrl" id="turnRight" title="Turn right (→)" aria-label="Turn right">›</button>
       </div>
       <p class="hint">drag to look around · pinch or scroll to zoom</p>
-      <button id="panelBtn" class="panel-btn" aria-expanded="false" aria-controls="panel">
-        Explore
-      </button>
+      <div class="panel-btn-row">
+        <button id="panelBtn" class="panel-btn" aria-expanded="false" aria-controls="panel">
+          Explore
+        </button>
+        <button id="trainBtn" class="panel-btn train" aria-expanded="false" aria-controls="trainer">
+          Train Objects
+        </button>
+      </div>
     </div>
 
     <!-- Scene switcher: an authoring control, not part of the experience. Its
@@ -241,6 +246,82 @@
       </footer>
     </aside>
 
+    <!-- object training: hold a real object up to the camera, map it to a
+         constellation, and let live recognition turn the sky towards it -->
+    <aside id="trainer" class="story panel" hidden>
+      <button id="closeTrainer" class="close" aria-label="Close">&times;</button>
+      <header class="panel-head">
+        <h1>Train Objects</h1>
+        <p>Hold a physical object up to the camera and capture a few examples, then
+           map it to one of the seventeen told constellations. Turn on live
+           recognition and whichever one you're holding up will glow warm orange
+           and turn to the center of the screen &mdash; tap it while it's glowing
+           to read its story.</p>
+      </header>
+
+      <section class="group">
+        <h2>Camera</h2>
+        <div class="trainer-stage" id="trainerStage">
+          <video id="trainerVideo" autoplay muted playsinline></video>
+          <p class="trainer-placeholder" id="trainerPlaceholder">Camera is off.</p>
+          <p class="trainer-seeing" id="trainerSeeing" hidden></p>
+        </div>
+        <div class="frow">
+          <button class="btn btn-primary" id="startCamBtn" disabled>Start Camera</button>
+          <button class="btn" id="stopCamBtn" disabled>Stop Camera</button>
+        </div>
+        <p class="ghint" id="trainerStatus">Loading recognition engine&hellip;</p>
+      </section>
+
+      <section class="group">
+        <h2>Add an object</h2>
+        <div class="frow">
+          <label class="field"><span>Object name</span>
+            <input type="text" id="newObjectName" placeholder="e.g. Seashell">
+          </label>
+          <label class="field"><span>Constellation</span>
+            <select id="newObjectAbbrev" class="sel"></select>
+          </label>
+        </div>
+        <div class="frow">
+          <button class="btn btn-primary" id="addObjectBtn">+ Add object</button>
+        </div>
+        <p class="ghint bad-text" id="addObjectError"></p>
+        <p class="ghint">Tip: also add a <strong>Background</strong> object (choose
+           "No constellation" and capture a few examples of the empty scene, no
+           object in frame) so recognition has somewhere to put "nothing is
+           being held up" instead of guessing one of the seventeen anyway.</p>
+      </section>
+
+      <section class="group">
+        <h2>Trained objects</h2>
+        <ul id="objectList" class="obj-list"></ul>
+        <p class="ghint" id="noObjectsNote">No objects added yet.</p>
+      </section>
+
+      <details class="group det" open>
+        <summary><h2>Live recognition</h2></summary>
+        <label class="chk">
+          <input type="checkbox" id="liveRecognition">
+          <span>Watch the camera and glow the matching constellation</span>
+        </label>
+        <label class="field"><span>Match threshold &mdash; <span id="thresholdVal">75%</span></span>
+          <input type="range" id="thresholdSlider" min="40" max="99" value="75">
+        </label>
+      </details>
+
+      <details class="group det">
+        <summary><h2>Trained set</h2></summary>
+        <div class="frow">
+          <button class="btn" id="saveDatasetBtn">Save</button>
+          <button class="btn" id="loadDatasetBtn">Load</button>
+          <button class="btn" id="resetDatasetBtn">Reset all</button>
+        </div>
+        <input type="file" id="loadDatasetInput" accept="application/json" hidden>
+        <p class="ghint" id="datasetStatus"></p>
+      </details>
+    </aside>
+
     <!-- the story, slides in over the sky -->
     <aside id="story" class="story" hidden></aside>
   </div>
@@ -252,5 +333,8 @@
 <script src="js/astro.js"></script>
 <script src="js/sky.js"></script>
 <script src="js/app.js"></script>
+<!-- objectTrainer.js loads MediaPipe Tasks Vision itself via a dynamic import,
+     since it's an ES module (vision_bundle.mjs) rather than a classic script. -->
+<script src="js/objectTrainer.js"></script>
 </body>
 </html>
