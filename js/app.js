@@ -397,6 +397,14 @@
    */
   function revealZodiac(abbrev) {
     if (!ZODIAC_FILES[abbrev]) return;
+    // Already showing this sign's reveal — a no-op, not a restart. The camera
+    // recognition driving this can flicker near its confidence threshold for a
+    // real held object (a little hand movement is enough), which releases and
+    // re-locks onto the *same* object; each re-lock used to call this again and
+    // restart narration from zero every time, so the clip could never get past
+    // its first instant — heard as the audio "clipping" at the start, on
+    // repeat. Restarting is still correct when it's a genuinely different sign.
+    if (state.scene === 4 && state.detectedZodiac === abbrev) return;
     state.detectedZodiac = abbrev;
     if (state.scene === 4) { renderRevealScene(); startSceneNarration(); draw(); }
     else setScene(4);
@@ -433,6 +441,9 @@
   const NARRATION_SLACK_MS = 2500;
   // If neither `canplay` nor `error` arrives, try playing anyway rather than wait.
   const NARRATION_READY_GRACE_MS = 2500;
+  // Beat of silence after arriving on a scene before its voice starts, so the
+  // visual has a moment to land first rather than talking over its own entrance.
+  const NARRATION_START_DELAY_MS = 2000;
 
   function stopNarration() {
     narrationToken++;
@@ -440,7 +451,7 @@
       try { narrator.pause(); } catch { /* already gone */ }
       narrator.onended = null;
       narrator.onerror = null;
-      narrator.oncanplay = null;
+      narrator.oncanplaythrough = null;
       narrator.onloadedmetadata = null;
       narrator.src = '';          // release the decoder
       narrator = null;
@@ -464,13 +475,23 @@
         if (settled) return;
         settled = true;
         clearTimeout(watchdog);
-        audio.onended = audio.onerror = audio.oncanplay = audio.onloadedmetadata = null;
+        audio.onended = audio.onerror = audio.oncanplaythrough = audio.onloadedmetadata = null;
         resolve(why);
       };
       const arm = (ms) => { clearTimeout(watchdog); watchdog = setTimeout(() => done('timeout'), ms); };
 
       const start = () => {
         if (settled || token !== narrationToken) return;
+        // Detached immediately: this event is allowed to fire again later in a
+        // normal playback session — after any real stall-and-recover — and
+        // leaving this handler attached turned that into an infinite loop.
+        // Rewinding to zero invalidates the buffer position it was just about
+        // to play from, which fires `waiting`; that resolves instantly for an
+        // already-downloaded local file, which fires this event again, which
+        // rewound and replayed again — thousands of times a second, with the
+        // clip never actually advancing past its first instant. That is the
+        // "delay" this caused: not slow, just permanently stuck restarting.
+        audio.oncanplaythrough = null;
         // Explicitly from the top: a fresh element should already be at zero, but
         // saying so costs nothing and guarantees the first word is there.
         try { audio.currentTime = 0; } catch { /* not seekable yet, fine */ }
@@ -479,7 +500,14 @@
 
       audio.onended = () => done('ended');
       audio.onerror = () => done('error');
-      audio.oncanplay = start;
+      // `canplay` — a couple of decoded frames — turned out not to be a strong
+      // enough guarantee: playing on it could still start a beat into the clip,
+      // clipping the first word. `canplaythrough` (enough buffered to expect no
+      // stall before the end) means more of the clip is actually decoded before
+      // playback starts, which is what a clean beginning needs. Costs nothing
+      // extra here — for a local file both fire within a millisecond of each
+      // other — so there's no real tradeoff to switching.
+      audio.oncanplaythrough = start;
       audio.onloadedmetadata = () => {
         if (Number.isFinite(audio.duration) && audio.duration > 0) {
           arm(audio.duration * 1000 + NARRATION_SLACK_MS);
@@ -511,6 +539,8 @@
 
     const token = narrationToken;
     (async () => {
+      await new Promise((resolve) => setTimeout(resolve, NARRATION_START_DELAY_MS));
+      if (token !== narrationToken) return;      // left again during the pause
       for (const clip of clips) {
         if (token !== narrationToken) return;    // scene changed under us
         const why = await playClip(clip, token);
