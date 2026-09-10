@@ -33,6 +33,12 @@
     'https://storage.googleapis.com/mediapipe-models/image_embedder/mobilenet_v3_small/float32/1/mobilenet_v3_small.tflite';
 
   const video = $('trainerVideo');
+  // Scene 3's own camera preview (app.js owns starting/stopping it). Frames are
+  // read from here whenever that scene is live, so a physical shape held up
+  // during the actual "hold up the card" experience can trigger the reveal —
+  // not only through this panel's own camera, which is really an operator/
+  // training tool most visitors will never open.
+  const cardVideo = $('cardCamVideo');
   const trainerStage = $('trainerStage');
   const placeholder = $('trainerPlaceholder');
   const seeingEl = $('trainerSeeing');
@@ -226,6 +232,10 @@
       loadFromLocalStorage();
       setStatus('Ready. Add an object below, then start the camera to capture examples.', 'ok');
       startCamBtn.disabled = false;
+      // Runs continuously from here on, independent of this panel's own camera —
+      // see predictLoop, which also watches scene 3's camera whenever this
+      // panel's isn't the one active.
+      rafId = requestAnimationFrame(predictLoop);
     } catch (err) {
       console.error(err);
       setStatus('Could not load the recognition engine. Check your internet connection and reload the page.', 'bad-text');
@@ -250,7 +260,6 @@
         ? 'Camera running.'
         : 'Camera running. Capture examples for at least one object to begin recognition.', 'ok');
       running = true;
-      predictLoop();
     } catch (err) {
       console.error(err);
       setStatus('Could not access the camera. Check browser permissions and that no other app is using it.', 'bad-text');
@@ -259,7 +268,9 @@
 
   function stopCamera() {
     running = false;
-    if (rafId) cancelAnimationFrame(rafId);
+    // predictLoop itself keeps running (not cancelled here) — stopping this
+    // panel's own camera shouldn't also stop watching scene 3's, which is the
+    // one real visitors actually use.
     if (stream) { stream.getTracks().forEach((t) => t.stop()); stream = null; }
     video.srcObject = null;
     placeholder.hidden = false;
@@ -277,19 +288,41 @@
 
   let lastCheckTime = 0;
 
+  // Which video to read this tick: this panel's own camera takes priority
+  // when it's running (that's an explicit, deliberate testing action), else
+  // scene 3's camera if that scene is live and its stream has actually landed
+  // — checking `cameraStream` rather than just `scene === 3` avoids reading a
+  // video element that's still mid-permission-prompt with no frames yet.
+  function activeVideoSource() {
+    if (running) return video;
+    if (sky && sky.state.scene === 3 && sky.cameraStream && cardVideo && cardVideo.readyState >= 2) {
+      return cardVideo;
+    }
+    return null;
+  }
+
   function predictLoop(timestamp) {
-    if (!running) return;
+    const source = activeVideoSource();
+    // Fully paused while the reveal card is up (scene 4) — the whole point of
+    // the reveal is to hold still on one sign, so scanning shouldn't be able to
+    // yank it over to a different one mid-read. Resumes the moment the scene
+    // changes away from 4, e.g. exiting back to the ordinary sky. `currentLabel`
+    // is left untouched across the pause, so if the same object is still in
+    // frame when it resumes, the existing "only act on label !== currentLabel"
+    // check already stops it from instantly re-triggering the same reveal —
+    // nothing extra is needed to avoid that loop.
+    const revealShowing = sky && sky.state.scene === 4;
     const dueForLockedCheck = !locked || (timestamp - lastCheckTime >= LOCKED_CHECK_INTERVAL_MS);
-    if (knn.getNumClasses() > 0 && !isPredicting && dueForLockedCheck) {
+    if (source && !revealShowing && knn && knn.getNumClasses() > 0 && !isPredicting && dueForLockedCheck) {
       lastCheckTime = timestamp;
       isPredicting = true;
-      predictFrame().finally(() => { isPredicting = false; });
+      predictFrame(source).finally(() => { isPredicting = false; });
     }
     rafId = requestAnimationFrame(predictLoop);
   }
 
-  async function predictFrame() {
-    const embedResult = await embedder.embedForVideo(video, nextTimestamp());
+  async function predictFrame(sourceVideo) {
+    const embedResult = await embedder.embedForVideo(sourceVideo, nextTimestamp());
     const prediction = knn.predictClass(embedResult.embeddings[0], 3);
     handlePrediction(prediction);
   }
@@ -305,8 +338,12 @@
       : `${label} · ${Math.round(conf * 100)}% (below threshold)`;
     seeingEl.classList.toggle('match', isMatch);
 
-    if (!liveRecognition.checked) return;
-
+    // Detection and the reveal are always active once something is trained —
+    // real visitors going through scene 3 never see this panel or its
+    // checkbox, so the actual point of this integration can't depend on
+    // someone remembering to tick a box first. `liveRecognition` only gates
+    // the optional glow-and-turn preview on the sky canvas below, which is
+    // mainly useful while testing from scene 0 with this panel open.
     if (isMatch) {
       missStreak = 0;
       if (label !== currentLabel) {
@@ -318,19 +355,24 @@
         currentLabel = label;
         locked = true;
         const obj = objects.find((o) => o.name === label);
-        // A glow cue plus a turn to face it — but still no story panel.
-        // `state.detected` stays separate from `state.selected`, which remains
-        // under manual control: tapping the now-glowing, now-centered
-        // constellation still opens its story through the app's own click
-        // handling, untouched by this file.
-        // A "no constellation" object has abbrev '', which never equals a real
-        // constellation abbreviation in sky.js's glow check — so matching a
-        // background/negative class here correctly clears any current glow
-        // (and is skipped for the turn, since there's nothing to turn to).
         if (obj && sky) {
-          sky.state.detected = obj.abbrev;
-          if (obj.abbrev) turnToConstellation(obj.abbrev);
-          sky.draw();
+          // A glow cue plus a turn to face it — but still no story panel.
+          // `state.detected` stays separate from `state.selected`, which
+          // remains under manual control: tapping the now-glowing, now-
+          // centered constellation still opens its story through the app's
+          // own click handling, untouched by this file.
+          if (liveRecognition.checked) {
+            sky.state.detected = obj.abbrev;
+            if (obj.abbrev) turnToConstellation(obj.abbrev);
+            sky.draw();
+          }
+          // One of the twelve zodiac signs also gets the full reveal scene —
+          // the birthday-card animation and narration app.js already built for
+          // the typed-birthdate flow — so a recognized physical shape does the
+          // same job a birth date does there. The five circumpolar figures have
+          // no reveal art/narration recorded (they're not "signs"), so they stay
+          // glow-and-center only (and only when the checkbox above is on).
+          if (isZodiacAbbrev(obj.abbrev) && sky.revealZodiac) sky.revealZodiac(obj.abbrev);
         }
       }
     } else if (locked) {
@@ -376,6 +418,11 @@
     if (!abbrev) return 'no constellation — suppresses the glow';
     const c = constellations.find((c) => c.abbrev === abbrev);
     return c ? c.name : abbrev;
+  }
+
+  function isZodiacAbbrev(abbrev) {
+    const c = constellations.find((c) => c.abbrev === abbrev);
+    return !!c && c.group === 'zodiac';
   }
 
   function renderObjectList() {

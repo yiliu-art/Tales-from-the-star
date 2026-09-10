@@ -301,9 +301,13 @@
 
       <details class="group det" open>
         <summary><h2>Live recognition</h2></summary>
+        <p class="ghint">Recognition itself is always on once something's trained
+           &mdash; holding up a shape mapped to one of the twelve zodiac signs
+           jumps straight to its reveal, from here or from scene 3's own camera,
+           whether or not this panel is even open.</p>
         <label class="chk">
           <input type="checkbox" id="liveRecognition">
-          <span>Watch the camera and glow the matching constellation</span>
+          <span>Also glow &amp; turn to the matching constellation here on the sky (preview only)</span>
         </label>
         <label class="field"><span>Match threshold &mdash; <span id="thresholdVal">75%</span></span>
           <input type="range" id="thresholdSlider" min="40" max="99" value="75">

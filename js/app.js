@@ -382,6 +382,23 @@
     draw();
   }
 
+  /**
+   * Entry point for anything outside this file that identifies a zodiac sign
+   * on its own — currently js/objectTrainer.js, when the camera recognizes a
+   * trained physical shape mapped to one of the twelve. Skips the welcome/
+   * birthdate/card scenes entirely and jumps straight to the reveal for that
+   * sign, the same as scene 3's own confirmation does once it also reads the
+   * camera. `setScene(4)` alone would not be enough here: it no-ops when
+   * already on scene 4, so swapping to a different shape while one reveal is
+   * already showing would otherwise leave the previous sign's card on screen.
+   */
+  function revealZodiac(abbrev) {
+    if (!ZODIAC_FILES[abbrev]) return;
+    state.detectedZodiac = abbrev;
+    if (state.scene === 4) { renderRevealScene(); startSceneNarration(); draw(); }
+    else setScene(4);
+  }
+
   /* ------------------------------------------------------------ narration --- */
 
   /*
@@ -1754,7 +1771,7 @@
 
   window.__sky = { state, get data() { return data; }, get frame() { return frame; },
                    get computed() { return computed; }, computeSky, draw, lookAt, select,
-                   openingMoment, DARK_ENOUGH, SCENES, setScene,
+                   openingMoment, DARK_ENOUGH, SCENES, setScene, revealZodiac,
                    NARRATION, REVEAL_CLIPS, narrationClipsFor, playNarration, stopNarration,
                    acceptReady, isAffirmative, AFFIRMATIVES,
                    startGateListening, stopGateListening,
