@@ -242,19 +242,6 @@ input.bad { border-color: var(--bad); background: rgba(224, 115, 107, 0.14); }
 
 /* --------------------------------------------------------- hand control --- */
 
-.gesture-btn {
-  margin-left: 8px;
-  border-color: rgba(150, 190, 230, 0.34);
-  background: var(--glass);
-  color: var(--ink-2);
-}
-.gesture-btn:hover { border-color: rgba(150, 190, 230, 0.55); color: var(--ink); }
-.gesture-btn.on {
-  background: rgba(120, 175, 225, 0.32);
-  border-color: rgba(150, 190, 230, 0.6);
-  color: #fff;
-}
-
 .gesture-panel {
   position: absolute; z-index: 4;
   right: 22px; bottom: 20px; width: 200px;

@@ -147,14 +147,12 @@
         <button id="trainBtn" class="panel-btn train" aria-expanded="false" aria-controls="trainer">
           Train Objects
         </button>
-        <button id="gestureBtn" class="panel-btn gesture-btn" aria-pressed="false" aria-controls="gesturePanel">
-          Hand control
-        </button>
       </div>
     </div>
 
-    <!-- Hand-control camera preview + status. Hidden and inert until the visitor
-         opts in via the button above; js/gestures.js owns everything inside it. -->
+    <!-- Hand-control camera preview + status. Hidden and inert until scene 6
+         ("Creature") is entered; js/gestures.js owns everything inside it and
+         starts/stops it automatically based on the current scene. -->
     <div id="gesturePanel" class="gesture-panel" hidden>
       <div class="gesture-preview">
         <video id="gestureVideo" autoplay playsinline muted></video>

@@ -24,15 +24,17 @@
  * fast transition, not absolute distance, and leaves the other three fingers
  * out of it entirely, so it doesn't overlap with a four-finger fold.
  *
- * Off by default. The camera only ever starts when the "Hand control" button
- * is pressed, and is fully torn down when pressed again.
+ * Off by default. Starts automatically on entering scene 6 ("Creature") and
+ * is fully torn down on leaving it — see the scene watcher at the bottom of
+ * this file, which polls window.__sky.state.scene rather than having app.js
+ * call in here directly, keeping with this file's "layered on top, app.js
+ * untouched" approach. There is no manual button; scene 6 is the control.
  */
 (() => {
   'use strict';
 
   const $ = (id) => document.getElementById(id);
 
-  const button = $('gestureBtn');
   const panel = $('gesturePanel');
   const video = $('gestureVideo');
   const overlay = $('gestureOverlay');
@@ -235,8 +237,6 @@
   async function startGestures() {
     if (running) return;
     running = true;
-    button.classList.add('on');
-    button.setAttribute('aria-pressed', 'true');
     panel.hidden = false;
     statusEl.textContent = 'Loading hand tracker…';
     paused = false;
@@ -280,12 +280,29 @@
     video.pause();
     video.srcObject = null;
     overlayCtx.clearRect(0, 0, overlay.width, overlay.height);
-    button.classList.remove('on');
-    button.setAttribute('aria-pressed', 'false');
     panel.hidden = true;
   }
 
-  button.addEventListener('click', () => {
-    if (running) stopGestures(); else startGestures();
-  });
+  // --- scene 6 is the on/off switch ----------------------------------------
+  // Polls rather than being called from app.js, so this file stays layered on
+  // top of it rather than the other way around — same reasoning as reading
+  // window.__sky.state elsewhere in this file instead of app.js importing
+  // this one. window.__sky may not exist yet at the moment this file's own
+  // top-level code runs (app.js boots on DOMContentLoaded, same as this
+  // script), so the very first tick tolerates it being absent.
+  const GESTURE_SCENE = 6;
+  let lastSeenScene = null;
+  function watchSceneForGestures() {
+    const sky = window.__sky;
+    if (sky) {
+      const scene = sky.state.scene;
+      if (scene !== lastSeenScene) {
+        lastSeenScene = scene;
+        if (scene === GESTURE_SCENE) startGestures();
+        else stopGestures();
+      }
+    }
+    setTimeout(watchSceneForGestures, 200);
+  }
+  watchSceneForGestures();
 })();
