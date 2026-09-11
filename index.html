@@ -8,7 +8,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Libre+Bodoni:ital,wght@0,400..700;1,400..700&family=EB+Garamond:ital,wght@0,400..800;1,400..800&display=swap">
-<link rel="stylesheet" href="styles.css">
+<link rel="stylesheet" href="styles.css?v=11">
 </head>
 <body>
 
@@ -112,10 +112,33 @@
     <!-- Scene 4 only: the reveal. Same take-over as scenes 1-3 — a stand-in
          for the moment a card-detection model will trigger this directly. -->
     <div id="revealScene" class="reveal-scene" hidden aria-live="polite">
-      <p class="reveal-card" id="revealCard"></p>
+      <!-- Invisible but present: reserves the exact same layout space the
+           title used to occupy here, so the image's centered position is
+           untouched. The real, visible title now sits inside .reveal-art-wrap
+           below, positioned absolutely against it. -->
+      <p class="reveal-card reveal-card-spacer" aria-hidden="true">&nbsp;</p>
       <div class="reveal-art-wrap">
         <div class="reveal-art" id="revealArt" aria-hidden="true"></div>
         <div class="reveal-traits" id="revealTraits"></div>
+        <p class="reveal-card reveal-card-below" id="revealCard"></p>
+      </div>
+    </div>
+
+    <!-- Scene 5 only: three directions to explore further, each paired with
+         the hand gesture that picks it. Same take-over as scenes 1-4. Visual
+         only for now — no click/gesture wiring yet. -->
+    <div id="gestureTopicsScene" class="gesture-topics-scene" hidden aria-live="polite">
+      <div class="gesture-topic-card" data-topic="love">
+        <img class="gesture-topic-img" src="assets/explore/love2.png" alt="">
+        <p class="gesture-topic-title">Love</p>
+      </div>
+      <div class="gesture-topic-card" data-topic="friendship">
+        <img class="gesture-topic-img" src="assets/explore/friendship.png" alt="">
+        <p class="gesture-topic-title">Friendship</p>
+      </div>
+      <div class="gesture-topic-card" data-topic="career">
+        <img class="gesture-topic-img" src="assets/explore/career.png" alt="">
+        <p class="gesture-topic-title">Career</p>
       </div>
     </div>
 
@@ -354,15 +377,21 @@
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/astronomy-engine@2.1.19/astronomy.browser.min.js" defer></script>
-<script src="data/catalog.js"></script>
-<script src="js/astro.js"></script>
-<script src="js/sky.js"></script>
-<script src="js/app.js"></script>
+<!-- The ?v= on every local script below is a manual cache-buster: this
+     project's dev server sends no caching headers, so browsers fall back to
+     their own heuristic caching, which in practice has been aggressive enough
+     to keep serving a stale js/app.js or js/gestures.js even across a hard
+     reload. Bump CACHE_BUST (find-and-replace the value below) after editing
+     any local script, so its URL is one the browser has never cached. -->
+<script src="data/catalog.js?v=11"></script>
+<script src="js/astro.js?v=11"></script>
+<script src="js/sky.js?v=11"></script>
+<script src="js/app.js?v=11"></script>
 <!-- objectTrainer.js loads MediaPipe Tasks Vision itself via a dynamic import,
      since it's an ES module (vision_bundle.mjs) rather than a classic script. -->
-<script src="js/objectTrainer.js"></script>
+<script src="js/objectTrainer.js?v=11"></script>
 <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js"></script>
-<script src="js/gestures.js"></script>
+<script src="js/gestures.js?v=11"></script>
 </body>
 </html>

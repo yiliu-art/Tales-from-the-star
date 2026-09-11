@@ -844,6 +844,19 @@ input.bad { border-color: var(--bad); background: rgba(224, 115, 107, 0.14); }
   margin: 0; font: 700 clamp(34px, 4.1vw, 56px) "Libre Bodoni", serif; color: #fff;
   text-shadow: 0 1px 16px rgba(0, 0, 0, 0.65);
 }
+/* Present only to hold open the same vertical space the title used to fill
+   above the image, so centering .reveal-art-wrap lands it exactly where it
+   already was — see the HTML comment above this element. */
+.reveal-card-spacer { visibility: hidden; }
+/* The real title: positioned against the wrap's own bottom edge (not a fixed
+   offset), so it sits just under the image regardless of how tall any given
+   sign's artwork happens to render. */
+.reveal-card-below {
+  position: absolute; top: 100%; left: 50%;
+  transform: translateX(-50%);
+  margin-top: 22px;
+  white-space: nowrap;
+}
 
 .reveal-art-wrap { position: relative; display: inline-flex; }
 .reveal-art svg { max-height: 56vh; max-width: 74vw; width: auto; height: auto; display: block; }
@@ -859,6 +872,50 @@ input.bad { border-color: var(--bad); background: rgba(224, 115, 107, 0.14); }
   .reveal-card { font-size: 26px; }
   .reveal-art svg { max-height: 44vh; max-width: 84vw; }
   .reveal-trait { font-size: 15px; }
+}
+
+/* ------------------------------------------------------- gesture topics --- */
+
+/* Scene 5: three directions to explore, each paired with the hand gesture
+   that picks it. Same take-over treatment as scenes 1-4 (backdrop keeps
+   playing underneath). Cards are plain bordered rectangles over it, matching
+   the supplied design rather than adding a fill of their own. */
+.gesture-topics-scene {
+  position: absolute; inset: 0; z-index: 2;
+  display: flex; align-items: center; justify-content: center;
+  gap: clamp(20px, 4vw, 56px);
+  padding: 0 5vw;
+}
+.gesture-topics-scene[hidden] { display: none !important; }
+
+.gesture-topic-card {
+  display: flex; flex-direction: column; align-items: center;
+  width: min(24vw, 300px);
+  aspect-ratio: 3 / 4.3;
+  box-sizing: border-box;
+  border: 1.5px solid rgba(240, 232, 220, 0.88);
+  /* Percentage padding always resolves against the containing block (this
+     row), not this card's own ~300px width, so a plain 9%/6%/8% here was
+     actually 9%/6%/8% of the whole row and ate almost the entire card.
+     min(Xvw, Ypx) mirrors the card's own width: min(24vw, 300px) formula so
+     the padding scales down together with the card, staying proportional. */
+  padding: min(2.16vw, 27px) min(1.44vw, 18px) min(1.92vw, 24px);
+}
+.gesture-topic-img {
+  width: 100%;
+  flex: 1 1 auto;
+  min-height: 0;
+  object-fit: contain;
+}
+.gesture-topic-title {
+  margin: auto 0 0; padding-top: 8%;
+  font: 400 clamp(26px, 2.7vw, 42px) "Libre Bodoni", serif;
+  color: #fdf8f0; text-align: center; line-height: 1.15;
+}
+
+@media (max-width: 780px) {
+  .gesture-topics-scene { flex-direction: column; gap: 18px; padding: 4vh 0; }
+  .gesture-topic-card { width: min(60vw, 280px); aspect-ratio: 3 / 2.6; }
 }
 
 /* -------------------------------------------------------- object trainer --- */

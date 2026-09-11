@@ -406,8 +406,27 @@
     // repeat. Restarting is still correct when it's a genuinely different sign.
     if (state.scene === 4 && state.detectedZodiac === abbrev) return;
     state.detectedZodiac = abbrev;
-    if (state.scene === 4) { renderRevealScene(); startSceneNarration(); draw(); }
+    if (state.scene === 4) { renderRevealScene(); startSceneNarration(); scheduleRevealAdvance(); draw(); }
     else setScene(4);
+  }
+
+  // Auto-advance from the reveal to the gesture-topics scene a few seconds
+  // after it's shown, rather than waiting on a click. Scheduled fresh on every
+  // fresh reveal (initial entry into scene 4, or swapping to a different sign
+  // while already there — see revealZodiac above) and cancelled the moment
+  // scene 4 stops being current, so leaving early or swapping signs again
+  // doesn't fire a stale timer against whatever's on screen by then.
+  const REVEAL_ADVANCE_MS = 5000;
+  let revealAdvanceTimer = null;
+  function scheduleRevealAdvance() {
+    clearTimeout(revealAdvanceTimer);
+    revealAdvanceTimer = setTimeout(() => {
+      if (state.scene === 4) setScene(5);
+    }, REVEAL_ADVANCE_MS);
+  }
+  function cancelRevealAdvance() {
+    clearTimeout(revealAdvanceTimer);
+    revealAdvanceTimer = null;
   }
 
   /* ------------------------------------------------------------ narration --- */
@@ -692,7 +711,7 @@
   }
 
   /**
-   * Scenes 1-4 take over from the ordinary sky: the star canvas and its HUD
+   * Scenes 1-5 take over from the ordinary sky: the star canvas and its HUD
    * hide (the backdrop video keeps playing underneath, untouched) and that
    * scene's own overlay starts. Every other scene restores the ordinary sky.
    */
@@ -701,7 +720,8 @@
     const birthdateScene = state.scene === 2;
     const cardScene = state.scene === 3;
     const revealScene = state.scene === 4;
-    const takeover = zodiacScene || birthdateScene || cardScene || revealScene;
+    const gestureTopicsScene = state.scene === 5;
+    const takeover = zodiacScene || birthdateScene || cardScene || revealScene || gestureTopicsScene;
     $('sky').hidden = takeover;
     document.querySelector('.hud-tl').hidden = takeover;
     document.querySelector('.hud-tr').hidden = takeover;
@@ -709,6 +729,7 @@
     $('birthdateScene').hidden = !birthdateScene;
     $('cardScene').hidden = !cardScene;
     $('revealScene').hidden = !revealScene;
+    $('gestureTopicsScene').hidden = !gestureTopicsScene;
     if (zodiacScene) startZodiacSlideshow(); else stopZodiacSlideshow();
     // Always enter scene 1 ungated: the gate is earned by the narration finishing.
     hideZodiacGate();
@@ -716,6 +737,8 @@
     if (cardScene) renderCardScene();
     if (cardScene) startCamera(); else stopCamera();
     if (revealScene) renderRevealScene();
+    cancelRevealAdvance();
+    if (revealScene) scheduleRevealAdvance();
     startSceneNarration();
   }
 
